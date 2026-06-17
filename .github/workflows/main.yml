@@ -7,13 +7,13 @@ env:
   kernel_repository: MiCode/Xiaomi_Kernel_OpenSource
   kernel_branch: dipper-q-oss
   device: dipper
-  clang_version: r365631c          # 4.9 内核推荐，r487747c 也可试
+  clang_version: r365631c          # 4.9 内核推荐
   defconfig: |
     dipper_defconfig
   kernel_patch: |
     backport-path-umount.patch
-    50_add_susfs_in_kernel-4.9.patch   # ← SUSFS v2 patch（放 patches/ 目录）
-  kernelsu_patch: |                    # 留空=自动打非GKI KernelSU v0.9.5(MAX)
+    50_add_susfs_in_kernel-4.9.patch   # ← SUSFS v2 patch
+  kernelsu_patch: |                    # 留空=自动打非GKI KernelSU
 
 on:
   workflow_dispatch:
@@ -71,7 +71,7 @@ jobs:
           patch -p1 --forward < this-repo/patches/$p || true
         done
 
-    # ===== 追加 SUSFS + KernelSU defconfig（防被 olddefconfig 冲掉）=====
+    # ===== 追加 SUSFS + KernelSU defconfig =====
     - name: Enable KSU & SUSFS in defconfig
       run: |
         DEF=arch/arm64/configs/dipper_defconfig
@@ -96,10 +96,12 @@ jobs:
           cat arch/arm64/configs/$line >> arch/arm64/configs/merged_defconfig
         done <<<"$defconfig"
 
+    # ===== ✅ 修正点：标准非GKI KernelSU 安装 =====
     - name: Setup KernelSU
       run: |
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/non-gki/kernel/setup.sh" | bash -
 
+    # ===== Clang 工具链 =====
     - name: "AOSP-Clang: Restore"
       id: aosp_clang_restore
       if: env.clang_type == 'aosp'
