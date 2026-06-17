@@ -7,13 +7,12 @@ env:
   kernel_repository: MiCode/Xiaomi_Kernel_OpenSource
   kernel_branch: dipper-q-oss
   device: dipper
-  clang_version: r365631c          # 4.9 内核推荐
   defconfig: |
     dipper_defconfig
   kernel_patch: |
     backport-path-umount.patch
-    50_add_susfs_in_kernel-4.9.patch   # ← SUSFS v2 patch
-  kernelsu_patch: |                    # 留空=自动打非GKI KernelSU
+    50_add_susfs_in_kernel-4.9.patch
+  kernelsu_patch: |
 
 on:
   workflow_dispatch:
@@ -30,21 +29,21 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Set env
-      run: |
-        clang_type=aosp
-        echo "clang_type=$clang_type" | tee -a $GITHUB_ENV
-        if [[ "$clang_version" = "latest" ]]; then
-          clang_version=$(curl -L https://android.googlesource.com/kernel/common/+/refs/heads/android-mainline/build.config.constants | grep -Eo 'r[0-9]{6}[a-z]?[0-9]?')
-          echo "clang_version=$clang_version" | tee -a $GITHUB_ENV
-        fi
-
     - name: Install packages
       run: |
         sudo apt update
         sudo apt install -y \
-          binutils-arm-linux-gnueabi \
-          binutils-aarch64-linux-gnu
+          bc \
+          bison \
+          flex \
+          libssl-dev \
+          make \
+          gcc \
+          clang \
+          llvm \
+          lld \
+          binutils-aarch64-linux-gnu \
+          binutils-arm-linux-gnueabi
 
     - name: Checkout kernel source
       uses: actions/checkout@v4
@@ -59,11 +58,7 @@ jobs:
         path: this-repo
         submodules: recursive
 
-    - name: Get latest kernel commit id
-      run: |
-        echo "kernel_commit_id=$(git rev-parse HEAD)" | tee -a $GITHUB_ENV
-
-    # ===== 打补丁（allow-init + backport + SUSFS）=====
+    # ===== 打补丁 =====
     - name: Apply kernel patches
       run: |
         for p in $kernel_patch; do
@@ -71,7 +66,7 @@ jobs:
           patch -p1 --forward < this-repo/patches/$p || true
         done
 
-    # ===== 追加 SUSFS + KernelSU defconfig =====
+    # ===== 强制开启 KSU & SUSFS =====
     - name: Enable KSU & SUSFS in defconfig
       run: |
         DEF=arch/arm64/configs/dipper_defconfig
@@ -96,75 +91,34 @@ jobs:
           cat arch/arm64/configs/$line >> arch/arm64/configs/merged_defconfig
         done <<<"$defconfig"
 
-    # ✅ 关键修复：用官方脚本安装 KernelSU（非GKI）
+    # ===== 安装 KernelSU (非GKI) =====
     - name: Setup KernelSU
       run: |
-        # 下载官方 setup.sh
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" -o setup-ksu.sh
-        chmod +x setup-ksu.sh
-        # 执行安装（自动识别非GKI）
-        bash setup-ksu.sh
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
-    - name: "AOSP-Clang: Restore"
-      id: aosp_clang_restore
-      if: env.clang_type == 'aosp'
-      uses: actions/cache/restore@v4
-      with:
-        path: aosp-clang
-        key: aosp-clang-${{ env.clang_version }}
-
-    - name: "AOSP-Clang: Download"
-      id: aosp_clang_download
-      if: env.clang_type == 'aosp' && steps.aosp_clang_restore.outputs.cache-hit != 'true'
+    # ===== 导出编译参数 =====
+    - name: Export build flags
       run: |
-        aosp_clang_branch=$(
-          case "$clang_version" in
-            r365631c) echo android11-release;;
-            r383902|r416183b) echo master-kernel-build-2021;;
-            r450784e) echo master-kernel-build-2022;;
-            r487747c) echo main-kernel-build-2023;;
-            *) echo main;;
-          esac
-        )
-        mkdir -p aosp-clang
-        curl -L https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/$aosp_clang_branch/clang-$clang_version.tar.gz | tar xz -C aosp-clang
+        echo "FLAGS=ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang" >> $GITHUB_ENV
 
-    - name: "AOSP-Clang: Save"
-      if: env.clang_type == 'aosp' && steps.aosp_clang_download.outcome == 'success'
-      uses: actions/cache/save@v4
-      with:
-        path: aosp-clang
-        key: aosp-clang-${{ env.clang_version }}
-
-    - name: "AOSP-Clang: Setup"
-      if: env.clang_type == 'aosp'
-      run: echo "PATH=$(pwd)/aosp-clang/bin:$PATH" | tee -a $GITHUB_ENV
-
-    - name: export flags
-      run: |
-        echo "flags=O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" | tee -a $GITHUB_ENV
-
+    # ===== 生成配置 =====
     - name: Make defconfig
-      run: make $flags merged_defconfig
-
-    - name: Make
-      run: make $flags -j$(nproc --all)
-
-    - name: Package AnyKernel3 / boot
       run: |
-        file_name="boot.img"
-        zip_file_name="${file_name}.zip"
-        found_file=$(find ./ -name "$file_name")
-        if [ -n "$found_file" ]; then
-          echo "Found: $found_file"
-          zip "$zip_file_name" "$found_file"
-        else
-          echo "boot.img not found!"
-          exit 1
-        fi
+        make O=out $FLAGS merged_defconfig
+
+    # ===== 开始编译 =====
+    - name: Make
+      run: |
+        make O=out $FLAGS -j$(nproc --all)
+
+    # ===== 打包 =====
+    - name: Package AnyKernel3
+      run: |
+        cp out/arch/arm64/boot/Image.gz-dtb .
+        zip -r boot-dipper-KSU-SUSFS.zip Image.gz-dtb
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: boot-dipper-KSU-SUSFS
-        path: boot.img.zip
+        path: boot-dipper-KSU-SUSFS.zip
