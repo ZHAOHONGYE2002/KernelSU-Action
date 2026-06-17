@@ -29,7 +29,7 @@ jobs:
     permissions:
       contents: write
     steps:
-    - name: Install packages
+    - name: Install dependencies
       run: |
         sudo apt update
         sudo apt install -y \
@@ -40,35 +40,35 @@ jobs:
           make \
           gcc \
           clang \
-          llvm \
           lld \
-          binutils-aarch64-linux-gnu \
-          binutils-arm-linux-gnueabi
+          git \
+          python3
 
     - name: Checkout kernel source
       uses: actions/checkout@v4
       with:
         repository: ${{ env.kernel_repository }}
         ref: ${{ env.kernel_branch }}
-        submodules: recursive
+        path: kernel
 
     - name: Checkout this repo
       uses: actions/checkout@v4
       with:
         path: this-repo
-        submodules: recursive
 
     # ===== 打补丁 =====
-    - name: Apply kernel patches
+    - name: Apply patches
       run: |
-        for p in $kernel_patch; do
-          echo "Applying patch: $p"
-          patch -p1 --forward < this-repo/patches/$p || true
+        cd kernel
+        for p in ${{ env.kernel_patch }}; do
+          echo "Applying $p"
+          patch -p1 --forward < ../this-repo/patches/$p || true
         done
 
     # ===== 强制开启 KSU & SUSFS =====
     - name: Enable KSU & SUSFS in defconfig
       run: |
+        cd kernel
         DEF=arch/arm64/configs/dipper_defconfig
         echo "CONFIG_KSU=y" >> $DEF
         echo "CONFIG_KSU_SUSFS=y" >> $DEF
@@ -82,43 +82,44 @@ jobs:
         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEF
         echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEF
 
-    - name: Merge defconfig
-      run: |
-        > arch/arm64/configs/merged_defconfig
-        while read -r line; do
-          if [ -z "$line" ] || [[ "$line" == "#"* ]]; then continue; fi
-          echo "Merging defconfig: $line"
-          cat arch/arm64/configs/$line >> arch/arm64/configs/merged_defconfig
-        done <<<"$defconfig"
-
     # ===== 安装 KernelSU (非GKI) =====
     - name: Setup KernelSU
       run: |
+        cd kernel
         curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
 
-    # ===== 导出编译参数 =====
-    - name: Export build flags
+    # ===== 修复 4.9 内核在 Ubuntu 上的编译错误 =====
+    - name: Fix bison/flex compatibility for old kernels
       run: |
-        echo "FLAGS=ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang" >> $GITHUB_ENV
+        cd kernel
+        # 删除自动生成的 lexer/parser 文件，强制使用系统工具重新生成
+        rm -f scripts/dtc/dtc-lexer.lex.c
+        rm -f scripts/dtc/dtc-parser.tab.c
+        rm -f scripts/dtc/dtc-parser.tab.h
 
-    # ===== 生成配置 =====
-    - name: Make defconfig
+    # ===== 编译 =====
+    - name: Build kernel
       run: |
-        make O=out $FLAGS merged_defconfig
-
-    # ===== 开始编译 =====
-    - name: Make
-      run: |
-        make O=out $FLAGS -j$(nproc --all)
+        cd kernel
+        # 清理
+        make clean
+        make mrproper
+        
+        # 配置
+        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang $DEF
+        
+        # 编译
+        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang -j$(nproc --all)
 
     # ===== 打包 =====
     - name: Package AnyKernel3
       run: |
-        cp out/arch/arm64/boot/Image.gz-dtb .
+        cd kernel
+        cp arch/arm64/boot/Image.gz-dtb .
         zip -r boot-dipper-KSU-SUSFS.zip Image.gz-dtb
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: boot-dipper-KSU-SUSFS
-        path: boot-dipper-KSU-SUSFS.zip
+        path: kernel/boot-dipper-KSU-SUSFS.zip
