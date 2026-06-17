@@ -33,10 +33,10 @@ jobs:
     - name: Set env
       run: |
         clang_type=aosp
-        echo clang_type=$clang_type | tee -a $GITHUB_ENV
+        echo "clang_type=$clang_type" | tee -a $GITHUB_ENV
         if [[ "$clang_version" = "latest" ]]; then
           clang_version=$(curl -L https://android.googlesource.com/kernel/common/+/refs/heads/android-mainline/build.config.constants | grep -Eo 'r[0-9]{6}[a-z]?[0-9]?')
-          echo clang_version=$clang_version | tee -a $GITHUB_ENV
+          echo "clang_version=$clang_version" | tee -a $GITHUB_ENV
         fi
 
     - name: Install packages
@@ -61,7 +61,7 @@ jobs:
 
     - name: Get latest kernel commit id
       run: |
-        echo kernel_commit_id=$(git rev-parse HEAD) | tee -a $GITHUB_ENV
+        echo "kernel_commit_id=$(git rev-parse HEAD)" | tee -a $GITHUB_ENV
 
     # ===== 打补丁（allow-init + backport + SUSFS）=====
     - name: Apply kernel patches
@@ -96,12 +96,15 @@ jobs:
           cat arch/arm64/configs/$line >> arch/arm64/configs/merged_defconfig
         done <<<"$defconfig"
 
-    # ===== ✅ 修正点：标准非GKI KernelSU 安装 =====
+    # ✅ 关键修复：用官方脚本安装 KernelSU（非GKI）
     - name: Setup KernelSU
       run: |
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/non-gki/kernel/setup.sh" | bash -
+        # 下载官方 setup.sh
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" -o setup-ksu.sh
+        chmod +x setup-ksu.sh
+        # 执行安装（自动识别非GKI）
+        bash setup-ksu.sh
 
-    # ===== Clang 工具链 =====
     - name: "AOSP-Clang: Restore"
       id: aosp_clang_restore
       if: env.clang_type == 'aosp'
@@ -135,11 +138,11 @@ jobs:
 
     - name: "AOSP-Clang: Setup"
       if: env.clang_type == 'aosp'
-      run: echo PATH=$(pwd)/aosp-clang/bin:$PATH | tee -a $GITHUB_ENV
+      run: echo "PATH=$(pwd)/aosp-clang/bin:$PATH" | tee -a $GITHUB_ENV
 
     - name: export flags
       run: |
-        echo flags="O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" | tee -a $GITHUB_ENV
+        echo "flags=O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-" | tee -a $GITHUB_ENV
 
     - name: Make defconfig
       run: make $flags merged_defconfig
