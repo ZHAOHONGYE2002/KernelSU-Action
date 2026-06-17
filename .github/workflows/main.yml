@@ -7,7 +7,12 @@ env:
   kernel_repository: MiCode/Xiaomi_Kernel_OpenSource
   kernel_branch: dipper-q-oss
   device: dipper
-  defconfig: dipper_defconfig
+  defconfig: |
+    dipper_defconfig
+  kernel_patch: |
+    backport-path-umount.patch
+    50_add_susfs_in_kernel-4.9.patch
+  kernelsu_patch: |
 
 on:
   workflow_dispatch:
@@ -35,527 +40,86 @@ jobs:
           make \
           gcc \
           clang \
-          patch \
-          git 
-        # 修复 4.9 内核的 yylloc 冲突
-        sudo ln -s /usr/bin/bison.yy /usr/bin/bison
-        sudo ln -s /usr/bin/flex.yy /usr/bin/flex
-
-    - name: Checkout current repo
-      uses: actions/checkout@v4
+          lld \
+          git \
+          python3
 
     - name: Checkout kernel source
-      run: |
-        git clone --depth=1 -b $kernel_branch https://github.com/$kernel_repository.git kernel
-        cd kernel
-        echo "Kernel source cloned successfully."
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.kernel_repository }}
+        ref: ${{ env.kernel_branch }}
+        path: kernel
 
+    - name: Checkout this repo
+      uses: actions/checkout@v4
+      with:
+        path: this-repo
+
+    # ===== 打补丁 =====
     - name: Apply patches
       run: |
         cd kernel
-        # 应用内核补丁
-        for patch in ../*.patch; do
-          if [ -f "$patch" ]; then
-            echo "Applying patch: $patch"
-            patch -p1 < "$patch"
-          fi
+        for p in ${{ env.kernel_patch }}; do
+          echo "Applying $p"
+          patch -p1 --forward < ../this-repo/patches/$p || true
         done
 
+    # ===== 强制开启 KSU & SUSFS =====
     - name: Enable KSU & SUSFS in defconfig
       run: |
         cd kernel
-        make $defconfig
-        # 启用 KernelSU 和 SUSFS
-        scripts/kconfig/merge_config.sh arch/arm64/configs/$defconfig \
-          kernel/crypto/Kconfig \
-          kernel/fs/Kconfig \
-          kernel/sched/Kconfig \
-          kernel/time/Kconfig \
-          kernel/trace/Kconfig \
-          kernel/uid/Kconfig \
-          kernel/user/Kconfig \
-          kernel/vfs/Kconfig \
-          kernel/workqueue/Kconfig \
-          kernel/xxhash/Kconfig \
-          kernel/yama/Kconfig \
-          kernel/yes/Kconfig \
-          kernel/zlib/Kconfig \
-          arch/arm64/configs/dipper_defconfig \
-          arch/arm64/configs/dipper_miui_defconfig \
-          arch/arm64/configs/dipper_q_oss_defconfig
-        # 手动启用 KernelSU 和 SUSFS
-        ./scripts/config --file .config \
-          --enable KERNELSU \
-          --enable SUSFS \
-          --enable SUSFS_MAGIC_ANON \
-          --enable SUSFS_MAGIC_FILE \
-          --enable SUSFS_MAGIC_MOUNT \
-          --enable SUSFS_MAGIC_SYMLINK \
-          --enable SUSFS_OPS_BYPASS \
-          --enable SUSFS_BASED_SUPER_BLOCK \
-          --enable SUSFS_SUPER_BLOCK \
-          --enable SUSFS_SUPER_BLOCK_OPS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUPER_BLOCK_OPS_BYPASS \
-          --enable SUSFS_SUP�
+        DEF=arch/arm64/configs/dipper_defconfig
+        echo "CONFIG_KSU=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEF
+        echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEF
+
+    # ===== 安装 KernelSU (非GKI) =====
+    - name: Setup KernelSU
+      run: |
+        cd kernel
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
+    # ===== 修复 4.9 内核在 Ubuntu 上的编译错误 =====
+    - name: Fix bison/flex compatibility for old kernels
+      run: |
+        cd kernel
+        # 删除自动生成的 lexer/parser 文件，强制使用系统工具重新生成
+        rm -f scripts/dtc/dtc-lexer.lex.c
+        rm -f scripts/dtc/dtc-parser.tab.c
+        rm -f scripts/dtc/dtc-parser.tab.h
+
+    # ===== 编译 =====
+    - name: Build kernel
+      run: |
+        cd kernel
+        # 清理
+        make clean
+        make mrproper
+        
+        # 配置
+        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang $DEF
+        
+        # 编译
+        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang -j$(nproc --all)
+
+    # ===== 打包 =====
+    - name: Package AnyKernel3
+      run: |
+        cd kernel
+        cp arch/arm64/boot/Image.gz-dtb .
+        zip -r boot-dipper-KSU-SUSFS.zip Image.gz-dtb
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: boot-dipper-KSU-SUSFS
+        path: kernel/boot-dipper-KSU-SUSFS.zip
