@@ -7,7 +7,12 @@ env:
   kernel_repository: MiCode/Xiaomi_Kernel_OpenSource
   kernel_branch: dipper-q-oss
   device: dipper
-  defconfig: dipper_defconfig
+  defconfig: |
+    dipper_defconfig
+  kernel_patch: |
+    backport-path-umount.patch
+    50_add_susfs_in_kernel-4.9.patch
+  kernelsu_patch: |
 
 on:
   workflow_dispatch:
@@ -35,10 +40,9 @@ jobs:
           make \
           gcc \
           clang \
-          patch \
+          lld \
           git \
-          wget \
-          zip
+          python3
 
     - name: Checkout kernel source
       uses: actions/checkout@v4
@@ -52,27 +56,20 @@ jobs:
       with:
         path: this-repo
 
-    # ===== 打补丁（直接指定文件名，避免变量解析错误）=====
-    - name: Apply kernel patches
-      working-directory: kernel
+    # ===== 打补丁 =====
+    - name: Apply patches
       run: |
-        echo "Applying backport-path-umount.patch"
-        patch -p1 < ../this-repo/patches/backport-path-umount.patch || true
-        
-        echo "Applying 50_add_susfs_in_kernel-4.9.patch"
-        patch -p1 < ../this-repo/patches/50_add_susfs_in_kernel-4.9.patch || true
-
-    # ===== 安装 KernelSU (非GKI) =====
-    - name: Setup KernelSU
-      working-directory: kernel
-      run: |
-        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+        cd kernel
+        for p in ${{ env.kernel_patch }}; do
+          echo "Applying $p"
+          patch -p1 --forward < ../this-repo/patches/$p || true
+        done
 
     # ===== 强制开启 KSU & SUSFS =====
     - name: Enable KSU & SUSFS in defconfig
-      working-directory: kernel
       run: |
-        DEF=arch/arm64/configs/${{ env.defconfig }}
+        cd kernel
+        DEF=arch/arm64/configs/dipper_defconfig
         echo "CONFIG_KSU=y" >> $DEF
         echo "CONFIG_KSU_SUSFS=y" >> $DEF
         echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> $DEF
@@ -85,10 +82,16 @@ jobs:
         echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> $DEF
         echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> $DEF
 
-    # ===== 修复 4.9 内核在 Ubuntu 上的编译错误 =====
-    - name: Fix bison/flex compatibility
-      working-directory: kernel
+    # ===== 安装 KernelSU (非GKI) =====
+    - name: Setup KernelSU
       run: |
+        cd kernel
+        curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -
+
+    # ===== 修复 4.9 内核在 Ubuntu 上的编译错误 =====
+    - name: Fix bison/flex compatibility for old kernels
+      run: |
+        cd kernel
         # 删除自动生成的 lexer/parser 文件，强制使用系统工具重新生成
         rm -f scripts/dtc/dtc-lexer.lex.c
         rm -f scripts/dtc/dtc-parser.tab.c
@@ -96,22 +99,22 @@ jobs:
 
     # ===== 编译 =====
     - name: Build kernel
-      working-directory: kernel
       run: |
+        cd kernel
         # 清理
         make clean
         make mrproper
         
         # 配置
-        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang ${{ env.defconfig }}
+        make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang $DEF
         
         # 编译
         make ARCH=arm64 LLVM=1 LLVM_IAS=1 CROSS_COMPILE=aarch64-linux-gnu- CC=clang -j$(nproc --all)
 
     # ===== 打包 =====
     - name: Package AnyKernel3
-      working-directory: kernel
       run: |
+        cd kernel
         cp arch/arm64/boot/Image.gz-dtb .
         zip -r boot-dipper-KSU-SUSFS.zip Image.gz-dtb
 
